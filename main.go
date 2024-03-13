@@ -2,11 +2,15 @@ package main
 
 import (
 	"os"
+	"path"
 	testAst "rd-toolexec/internal/ast"
 	"rd-toolexec/internal/toolexec/processors"
 	"rd-toolexec/internal/toolexec/proxy"
+	"runtime"
 	"strings"
 )
+
+var root string
 
 func main() {
 	cmdT := proxy.MustParseCommand(os.Args[1:])
@@ -16,7 +20,7 @@ func main() {
 		return
 	}
 
-	pkgInj := processors.NewPackageInjector(testAst.ImportPath, "/Users/tony.redondo/repos/github/Datadog/dd-sdk-go-testing/autoinstrument")
+	pkgInj := processors.NewPackageInjector(testAst.ImportPath, path.Join(root, "external", "dd-sdk-go-testing", "autoinstrument"))
 
 	if cmdT.Type() == proxy.CommandTypeCompile {
 		for idx, val := range cmdT.Args() {
@@ -118,4 +122,9 @@ func main() {
 		}
 
 	*/
+}
+
+func init() {
+	_, file, _, _ := runtime.Caller(0)
+	root = path.Dir(file)
 }

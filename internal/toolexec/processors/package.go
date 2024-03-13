@@ -142,6 +142,9 @@ func BuildPackage(importPath, pkgDir string, buildFlags ...string) (*PackageRegi
 	// 2 - Fetch and combine all dependencies
 	log.Printf("====> Building pkg register for %s\n", importPath)
 	filepath.WalkDir(wDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
 		if d.IsDir() || d.Name() != "importcfg" {
 			return nil
 		}
@@ -179,9 +182,6 @@ func NewPackageInjector(importPath, sourceDir string, flags ...string) PackageIn
 // ProcessCompile visits a compile command, compiles the injected package
 // and includes the package dependency in the target package's importcfg
 func (i *PackageInjector) ProcessCompile(cmd *proxy.CompileCommand) {
-	if cmd.Stage() != "b001" {
-		return
-	}
 	log.Printf("[%s] Injecting %s at compile\n", cmd.Stage(), i.importPath)
 	// 1 - Build the package
 	pkgReg, err := BuildPackage(i.importPath, i.sourceDir, i.buildFlags...)
@@ -192,7 +192,7 @@ func (i *PackageInjector) ProcessCompile(cmd *proxy.CompileCommand) {
 
 	// 2 - Add pkg dependency in importcfg
 	log.Printf("====> Injecting %s in final importcfg\n", i.importPath)
-	err = filepath.WalkDir(filepath.Dir(cmd.Flags.Output), func(path string, d fs.DirEntry, err error) error {
+	_ = filepath.WalkDir(filepath.Dir(cmd.Flags.Output), func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			log.Printf("error at entry: %v\n", err)
 			return err
@@ -220,9 +220,10 @@ func (i *PackageInjector) ProcessCompile(cmd *proxy.CompileCommand) {
 // ProcessLink visits a link command and includes all the new package dependencies
 // yielded by the compile step in importcfg.link
 func (i *PackageInjector) ProcessLink(cmd *proxy.LinkCommand) {
-	if cmd.Stage() != "b001" {
+	if cmd.Stage() == "." {
 		return
 	}
+
 	log.Printf("[%s] Injecting %s at link\n", cmd.Stage(), i.importPath)
 
 	// 1 - Read state from disk (created by ProcessCompile step)

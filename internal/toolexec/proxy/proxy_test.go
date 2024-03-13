@@ -9,7 +9,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/datadog/orchestrion/internal/toolexec/proxy"
+	"rd-toolexec/internal/toolexec/proxy"
 
 	"github.com/stretchr/testify/require"
 )

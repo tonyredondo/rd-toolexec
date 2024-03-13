@@ -8,7 +8,7 @@ package processors
 import (
 	"log"
 
-	"github.com/datadog/orchestrion/internal/toolexec/proxy"
+	"rd-toolexec/internal/toolexec/proxy"
 )
 
 type GoFileSwapper struct {

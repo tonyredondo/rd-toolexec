@@ -16,8 +16,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/datadog/orchestrion/internal/toolexec/processors"
-	"github.com/datadog/orchestrion/internal/toolexec/proxy"
+	"rd-toolexec/internal/toolexec/processors"
+	"rd-toolexec/internal/toolexec/proxy"
 )
 
 type Config struct {

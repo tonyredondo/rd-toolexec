@@ -15,8 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/datadog/orchestrion/internal/toolexec/proxy"
-	"github.com/datadog/orchestrion/internal/toolexec/utils"
+	"rd-toolexec/internal/toolexec/proxy"
+	"rd-toolexec/internal/toolexec/utils"
 )
 
 // PackageRegister describes Go package and its dependencies

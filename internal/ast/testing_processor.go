@@ -15,7 +15,6 @@ import (
 )
 
 // go get github.com/DataDog/dd-sdk-go-testing@a3bdb65a82031481e2edfcbf819261560f3393f2
-
 const (
 	importName    string = "ddtesting"
 	importPath    string = "github.com/DataDog/dd-sdk-go-testing/autoinstrument"
@@ -41,6 +40,7 @@ type astTestFileData struct {
 	ContainsDDTestingImport bool
 	Parent                  *astTestContainer
 	TestMain                *astTestData
+	DestinationFilePath     string
 }
 
 type astTestData struct {
@@ -263,7 +263,23 @@ func ProcessContainer() {
 					}
 					packageFile.AstFile.Decls = append(packageFile.AstFile.Decls, getTestMainDeclarationSentence(importName, "m"))
 
-					f, err := os.Create(packageFile.FilePath)
+					/*
+						if packageFile.DestinationFilePath == "" {
+							packageFile.DestinationFilePath = path.Join(os.TempDir(), fmt.Sprintf("%s_%s", buildId, filepath.Base(packageFile.FilePath)))
+						}
+					*/
+
+					if packageFile.DestinationFilePath == "" {
+						fileName := filepath.Base(packageFile.FilePath)
+						fileNameExt := path.Ext(fileName)
+						fileName = fmt.Sprintf("%v_*_%v", strings.TrimRight(fileName, fileNameExt), fileNameExt)
+						if tmpFile, err := os.CreateTemp("", fileName); err == nil {
+							packageFile.DestinationFilePath = tmpFile.Name()
+							tmpFile.Close()
+						}
+					}
+
+					f, err := os.Create(packageFile.DestinationFilePath)
 					if err == nil {
 						defer f.Close()
 						err = printer.Fprint(f, packageFile.FileSet, packageFile.AstFile)
@@ -272,7 +288,6 @@ func ProcessContainer() {
 							continue
 						}
 
-						fmt.Println("Writing package info")
 						fileContent = append(fileContent, fmt.Sprintf("%s\n", packageFile.Package))
 						os.WriteFile(filePath, []byte(strings.Join(fileContent, "\n")), 0666)
 						break
@@ -306,7 +321,17 @@ func processFile(file *astTestFileData) bool {
 				astutil.AddNamedImport(file.FileSet, file.AstFile, importName, importPath)
 			}
 
-			f, err := os.Create(file.FilePath)
+			if file.DestinationFilePath == "" {
+				fileName := filepath.Base(file.FilePath)
+				fileNameExt := path.Ext(fileName)
+				fileName = fmt.Sprintf("%v_*_%v", strings.TrimRight(fileName, fileNameExt), fileNameExt)
+				if tmpFile, err := os.CreateTemp("", fileName); err == nil {
+					file.DestinationFilePath = tmpFile.Name()
+					tmpFile.Close()
+				}
+			}
+
+			f, err := os.Create(file.DestinationFilePath)
 			if err == nil {
 				defer f.Close()
 				err = printer.Fprint(f, file.FileSet, file.AstFile)

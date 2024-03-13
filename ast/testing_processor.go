@@ -8,16 +8,18 @@ import (
 	"go/token"
 	"golang.org/x/tools/go/ast/astutil"
 	"os"
+	"path"
+	"path/filepath"
+	"slices"
 	"strings"
 )
 
 // go get github.com/DataDog/dd-sdk-go-testing@a3bdb65a82031481e2edfcbf819261560f3393f2
 
 const (
-	importName             string = "ddtesting"
-	importPath             string = "github.com/DataDog/dd-sdk-go-testing/autoinstrument"
-	importPathAst                 = `"` + importPath + `"`
-	finishFuncVariableName string = "testFinishFunc"
+	importName    string = "ddtesting"
+	importPath    string = "github.com/DataDog/dd-sdk-go-testing/autoinstrument"
+	importPathAst        = `"` + importPath + `"`
 )
 
 type astTestContainer struct {
@@ -26,6 +28,9 @@ type astTestContainer struct {
 }
 
 var containers []*astTestContainer
+var buildId string
+var basePath string
+var fileContent []string
 
 type astTestFileData struct {
 	Tests                   []*astTestData
@@ -35,7 +40,7 @@ type astTestFileData struct {
 	Package                 string
 	ContainsDDTestingImport bool
 	Parent                  *astTestContainer
-	HasTestMain             bool
+	TestMain                *astTestData
 }
 
 type astTestData struct {
@@ -46,6 +51,7 @@ type astTestData struct {
 	AstDeclaration        *ast.FuncDecl
 	SubTests              []*astSubTestData
 	Parent                *astTestFileData
+	IsMain                bool
 }
 
 type astSubTestData struct {
@@ -64,7 +70,12 @@ func ResetTestContainer() {
 	containers = make([]*astTestContainer, 0)
 }
 
+func SetBuildId(id string) {
+	buildId = id
+}
+
 func AppendTestFile(file string) {
+	basePath = filepath.Dir(file)
 	testData, err := createTestData(file)
 	if err == nil {
 		var selectedContainer *astTestContainer
@@ -112,15 +123,24 @@ func createTestData(file string) (*astTestFileData, error) {
 
 					// Let's extract the parameter name for `testing.T`
 					var tParam string
+					isMain := false
 					for _, pM := range funcDecl.Type.Params.List {
 						for _, pMName := range pM.Names {
 							switch pMType := pM.Type.(type) {
 							case *ast.StarExpr:
 								switch xType := pMType.X.(type) {
 								case *ast.SelectorExpr:
-									if xType.Sel.String() == "T" && xType.X.(*ast.Ident).String() == "testing" {
-										tParam = pMName.Name
-										break
+									if xType.X.(*ast.Ident).String() == "testing" {
+										xTypeSel := xType.Sel.String()
+										if xTypeSel == "T" {
+											tParam = pMName.Name
+											break
+										}
+										if xTypeSel == "M" {
+											tParam = pMName.Name
+											isMain = true
+											break
+										}
 									}
 								}
 							}
@@ -134,8 +154,11 @@ func createTestData(file string) (*astTestFileData, error) {
 					testData.EndLine = fileSet.Position(funcDecl.End()).Line
 					testData.AstDeclaration = funcDecl
 					testData.Parent = testFileData
+					testData.IsMain = isMain
 
-					testFileData.HasTestMain = testFileData.HasTestMain || testData.TestName == "TestMain"
+					if testData.TestName == "TestMain" {
+						testFileData.TestMain = testData
+					}
 
 					innerData, err := createBodyTestData(testData, funcDecl.Body)
 					if err == nil {
@@ -187,16 +210,46 @@ func (v *innerTestRunVisitor) Visit(node ast.Node) (w ast.Visitor) {
 }
 
 func ProcessContainer() {
+
+	//filePath := path.Join(os.TempDir(), fmt.Sprintf(".test_main_packages_%s", buildId))
+	filePath := path.Join(basePath, ".test_main_packages")
+	if bytes, err := os.ReadFile(filePath); err == nil {
+		fileContent = strings.Split(string(bytes), "\n")
+	}
+
 	for _, container := range containers {
 		if len(container.Files) > 0 {
 			isDirty := false
-			hasTestMain := false
+			var testMainTestData *astTestData
 			for _, file := range container.Files {
 				isDirty = processFile(file) || isDirty
-				hasTestMain = hasTestMain || file.HasTestMain
+				if file.TestMain != nil {
+					testMainTestData = file.TestMain
+				}
 			}
 
-			if !hasTestMain {
+			if testMainTestData == nil {
+				if !strings.HasSuffix(container.Package, "_test") {
+					// This package doesn't have a TestMain func, let's check if this is a black box testing scenario before trying to create a TestMain func
+					packageWithTest := fmt.Sprintf("%v_test", container.Package)
+					if slices.ContainsFunc(containers, func(c *astTestContainer) bool { return c.Package == packageWithTest }) {
+						// A _test package for this package name was found, we skip the injection on this package and left TestMain on the `_test` package
+						continue
+					}
+
+					if slices.Contains(fileContent, packageWithTest) {
+						// A _test package for this package name was found from a previous command execution
+						continue
+					}
+				} else {
+					// This is a test package let's check if we already processed the non _test package already before injecting the TestMain func
+					packageWithoutTest := container.Package[0 : len(container.Package)-5]
+					if slices.Contains(fileContent, packageWithoutTest) {
+						// A non _test package for this package name was found from a previous command execution
+						continue
+					}
+				}
+
 				packageFile := container.Files[0]
 				if !astutil.UsesImport(packageFile.AstFile, "os") {
 					astutil.AddImport(packageFile.FileSet, packageFile.AstFile, "os")
@@ -205,6 +258,7 @@ func ProcessContainer() {
 					astutil.AddNamedImport(packageFile.FileSet, packageFile.AstFile, importName, importPath)
 				}
 				packageFile.AstFile.Decls = append(packageFile.AstFile.Decls, getTestMainDeclarationSentence(importName, "m"))
+
 				f, err := os.Create(packageFile.FilePath)
 				if err == nil {
 					defer f.Close()
@@ -212,9 +266,11 @@ func ProcessContainer() {
 					if err != nil {
 						fmt.Println(err)
 					}
+
+					fmt.Println("Writing package info")
+					fileContent = append(fileContent, fmt.Sprintf("%s\n", packageFile.Package))
+					os.WriteFile(filePath, []byte(strings.Join(fileContent, "\n")), 0666)
 				}
-			} else {
-				fmt.Println("TODO: Modify current TestMain method")
 			}
 		}
 	}
@@ -225,7 +281,12 @@ func processFile(file *astTestFileData) bool {
 		isDirty := false
 		for _, test := range file.Tests {
 			for _, subTest := range test.SubTests {
-				newSubTestCall := getStartSubTestSentence(importName, test.TestingTAttributeName)
+				var newSubTestCall *ast.CallExpr
+				if test.IsMain {
+					newSubTestCall = getTestMainRunCallExpression(importName, test.TestingTAttributeName)
+				} else {
+					newSubTestCall = getStartSubTestSentence(importName, test.TestingTAttributeName)
+				}
 				newSubTestCall.Args = append(newSubTestCall.Args, subTest.Call.Args...)
 				subTest.Call.Fun = newSubTestCall.Fun
 				subTest.Call.Args = newSubTestCall.Args
@@ -249,69 +310,27 @@ func processFile(file *astTestFileData) bool {
 				}
 			}
 		}
-		/*
-			astutil.AddNamedImport(file.FileSet, file.AstFile, importName, importPath)
-
-			for _, test := range file.Tests {
-				test.AstDeclaration.Body.List = append([]ast.Stmt{
-					getStartTestSentence(importName, test.TestingTAttributeName),
-					getDeferFinishSentence(),
-				}, test.AstDeclaration.Body.List...)
-			}
-
-			f, err := os.Create(file.FilePath)
-			if err == nil {
-				defer f.Close()
-				err = printer.Fprint(f, file.FileSet, file.AstFile)
-				if err == nil {
-					return true
-				} else {
-					fmt.Println(err)
-				}
-			}
-		*/
 	}
 	return false
 }
-
-/*
-func getStartTestSentence(currentImportName string, varName string) *ast.AssignStmt {
-	return &ast.AssignStmt{
-		Lhs: []ast.Expr{
-			&ast.Ident{Name: "_"},
-			&ast.Ident{Name: finishFuncVariableName},
-		},
-		Tok: token.DEFINE,
-		Rhs: []ast.Expr{
-			&ast.CallExpr{
-				Fun: &ast.SelectorExpr{
-					X:   &ast.Ident{Name: currentImportName},
-					Sel: &ast.Ident{Name: "StartTest"},
-				},
-				Args: []ast.Expr{
-					&ast.Ident{Name: varName},
-				},
-			},
-		},
-	}
-}
-
-func getDeferFinishSentence() *ast.DeferStmt {
-	return &ast.DeferStmt{
-		Call: &ast.CallExpr{
-			Fun: &ast.Ident{
-				Name: finishFuncVariableName,
-			},
-		},
-	}
-}
-*/
 
 func getStartSubTestSentence(currentImportName string, varName string) *ast.CallExpr {
 	return &ast.CallExpr{
 		Fun: &ast.SelectorExpr{
 			X:   &ast.Ident{Name: currentImportName},
 			Sel: &ast.Ident{Name: "Run"},
+		},
+		Args: []ast.Expr{
+			&ast.Ident{Name: varName},
+		},
+	}
+}
+
+func getTestMainRunCallExpression(currentImportName string, varName string) *ast.CallExpr {
+	return &ast.CallExpr{
+		Fun: &ast.SelectorExpr{
+			X:   &ast.Ident{Name: currentImportName},
+			Sel: &ast.Ident{Name: "RunM"},
 		},
 		Args: []ast.Expr{
 			&ast.Ident{Name: varName},
@@ -346,15 +365,7 @@ func getTestMainDeclarationSentence(currentImportName string, varName string) *a
 							Sel: &ast.Ident{Name: "Exit"},
 						},
 						Args: []ast.Expr{
-							&ast.CallExpr{
-								Fun: &ast.SelectorExpr{
-									X:   &ast.Ident{Name: currentImportName},
-									Sel: &ast.Ident{Name: "RunM"},
-								},
-								Args: []ast.Expr{
-									&ast.Ident{Name: varName},
-								},
-							},
+							getTestMainRunCallExpression(currentImportName, varName),
 						},
 					},
 				},

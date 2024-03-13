@@ -27,25 +27,30 @@ func main() {
 					}
 				}
 			}
-
-			containers := testAst.GetTestContainer()
-			for _, container := range containers {
-				fmt.Printf("Package: %v\n", container.Package)
-				for _, file := range container.Files {
-					fmt.Printf("\tFile: %v | ContainsDDTestingImport: %v | HasTestMain: %v\n", file.FilePath, file.ContainsDDTestingImport, file.HasTestMain)
-					for _, test := range file.Tests {
-						fmt.Printf("\t\t%v (%v-%v) %v\n", test.TestName, test.StartLine, test.EndLine, test.TestingTAttributeName)
-						for _, subTest := range test.SubTests {
-							fmt.Printf("\t\t\t%v (%v) | %v\n", subTest.TestName, subTest.Line, subTest.Call)
+			/*
+				containers := testAst.GetTestContainer()
+				for _, container := range containers {
+					fmt.Printf("Package: %v\n", container.Package)
+					for _, file := range container.Files {
+						fmt.Printf("\tFile: %v | ContainsDDTestingImport: %v | HasTestMain: %v\n", file.FilePath, file.ContainsDDTestingImport, file.TestMain != nil)
+						for _, test := range file.Tests {
+							fmt.Printf("\t\t%v (%v-%v) %v\n", test.TestName, test.StartLine, test.EndLine, test.TestingTAttributeName)
+							for _, subTest := range test.SubTests {
+								fmt.Printf("\t\t\t%v (%v) | %v\n", subTest.TestName, subTest.Line, subTest.Call)
+							}
 						}
 					}
 				}
-			}
+			*/
 
+			for idx, val := range args {
+				if val == "-buildid" {
+					testAst.SetBuildId(args[idx+1])
+					break
+				}
+			}
 			testAst.ProcessContainer()
 		}
-
-		// fmt.Println(toolName, args)
 	}
 
 	// Simply run the tool.

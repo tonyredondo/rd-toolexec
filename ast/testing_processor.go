@@ -250,26 +250,33 @@ func ProcessContainer() {
 					}
 				}
 
-				packageFile := container.Files[0]
-				if !astutil.UsesImport(packageFile.AstFile, "os") {
-					astutil.AddImport(packageFile.FileSet, packageFile.AstFile, "os")
-				}
-				if !astutil.UsesImport(packageFile.AstFile, importPath) {
-					astutil.AddNamedImport(packageFile.FileSet, packageFile.AstFile, importName, importPath)
-				}
-				packageFile.AstFile.Decls = append(packageFile.AstFile.Decls, getTestMainDeclarationSentence(importName, "m"))
-
-				f, err := os.Create(packageFile.FilePath)
-				if err == nil {
-					defer f.Close()
-					err = printer.Fprint(f, packageFile.FileSet, packageFile.AstFile)
-					if err != nil {
-						fmt.Println(err)
+				for _, packageFile := range container.Files {
+					if !astutil.UsesImport(packageFile.AstFile, "testing") {
+						continue
 					}
 
-					fmt.Println("Writing package info")
-					fileContent = append(fileContent, fmt.Sprintf("%s\n", packageFile.Package))
-					os.WriteFile(filePath, []byte(strings.Join(fileContent, "\n")), 0666)
+					if !astutil.UsesImport(packageFile.AstFile, "os") {
+						astutil.AddImport(packageFile.FileSet, packageFile.AstFile, "os")
+					}
+					if !astutil.UsesImport(packageFile.AstFile, importPath) {
+						astutil.AddNamedImport(packageFile.FileSet, packageFile.AstFile, importName, importPath)
+					}
+					packageFile.AstFile.Decls = append(packageFile.AstFile.Decls, getTestMainDeclarationSentence(importName, "m"))
+
+					f, err := os.Create(packageFile.FilePath)
+					if err == nil {
+						defer f.Close()
+						err = printer.Fprint(f, packageFile.FileSet, packageFile.AstFile)
+						if err != nil {
+							fmt.Println(err)
+							continue
+						}
+
+						fmt.Println("Writing package info")
+						fileContent = append(fileContent, fmt.Sprintf("%s\n", packageFile.Package))
+						os.WriteFile(filePath, []byte(strings.Join(fileContent, "\n")), 0666)
+						break
+					}
 				}
 			}
 		}

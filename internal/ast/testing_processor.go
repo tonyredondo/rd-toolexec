@@ -255,9 +255,6 @@ func ProcessContainer() {
 						continue
 					}
 
-					if !astutil.UsesImport(packageFile.AstFile, "os") {
-						astutil.AddImport(packageFile.FileSet, packageFile.AstFile, "os")
-					}
 					if !astutil.UsesImport(packageFile.AstFile, ImportPath) {
 						astutil.AddNamedImport(packageFile.FileSet, packageFile.AstFile, ImportName, ImportPath)
 					}
@@ -393,11 +390,11 @@ func getTestMainDeclarationSentence(currentImportName string, varName string) *a
 				&ast.ExprStmt{
 					X: &ast.CallExpr{
 						Fun: &ast.SelectorExpr{
-							X:   &ast.Ident{Name: "os"},
-							Sel: &ast.Ident{Name: "Exit"},
+							X:   &ast.Ident{Name: currentImportName},
+							Sel: &ast.Ident{Name: "RunTestMain"},
 						},
 						Args: []ast.Expr{
-							getTestMainRunCallExpression(currentImportName, varName),
+							&ast.Ident{Name: varName},
 						},
 					},
 				},

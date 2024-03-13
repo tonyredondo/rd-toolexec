@@ -16,7 +16,7 @@ func main() {
 		return
 	}
 
-	pkgInj := processors.NewPackageInjector("github.com/DataDog/dd-sdk-go-testing/autoinstrument", "github.com/DataDog/dd-sdk-go-testing/autoinstrument")
+	pkgInj := processors.NewPackageInjector(testAst.ImportPath, "/Users/tony.redondo/repos/github/Datadog/dd-sdk-go-testing/autoinstrument")
 
 	if cmdT.Type() == proxy.CommandTypeCompile {
 		for idx, val := range cmdT.Args() {

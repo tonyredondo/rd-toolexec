@@ -16,9 +16,9 @@ import (
 
 // go get github.com/DataDog/dd-sdk-go-testing@a3bdb65a82031481e2edfcbf819261560f3393f2
 const (
-	importName    string = "ddtesting"
-	importPath    string = "github.com/DataDog/dd-sdk-go-testing/autoinstrument"
-	importPathAst        = `"` + importPath + `"`
+	ImportName    string = "ddtesting"
+	ImportPath    string = "github.com/DataDog/dd-sdk-go-testing/autoinstrument"
+	importPathAst        = `"` + ImportPath + `"`
 )
 
 type astTestContainer struct {
@@ -110,7 +110,7 @@ func createTestData(file string) (*astTestFileData, error) {
 		testFileData.Package = astFile.Name.String()
 		testFileData.ContainsDDTestingImport = false
 		for _, v2 := range astFile.Imports {
-			if v2.Name.String() == importName && v2.Path.Value == importPathAst {
+			if v2.Name.String() == ImportName && v2.Path.Value == importPathAst {
 				testFileData.ContainsDDTestingImport = true
 				break
 			}
@@ -258,10 +258,10 @@ func ProcessContainer() {
 					if !astutil.UsesImport(packageFile.AstFile, "os") {
 						astutil.AddImport(packageFile.FileSet, packageFile.AstFile, "os")
 					}
-					if !astutil.UsesImport(packageFile.AstFile, importPath) {
-						astutil.AddNamedImport(packageFile.FileSet, packageFile.AstFile, importName, importPath)
+					if !astutil.UsesImport(packageFile.AstFile, ImportPath) {
+						astutil.AddNamedImport(packageFile.FileSet, packageFile.AstFile, ImportName, ImportPath)
 					}
-					packageFile.AstFile.Decls = append(packageFile.AstFile.Decls, getTestMainDeclarationSentence(importName, "m"))
+					packageFile.AstFile.Decls = append(packageFile.AstFile.Decls, getTestMainDeclarationSentence(ImportName, "m"))
 
 					/*
 						if packageFile.DestinationFilePath == "" {
@@ -305,9 +305,9 @@ func processFile(file *astTestFileData) bool {
 			for _, subTest := range test.SubTests {
 				var newSubTestCall *ast.CallExpr
 				if test.IsMain {
-					newSubTestCall = getTestMainRunCallExpression(importName, test.TestingTAttributeName)
+					newSubTestCall = getTestMainRunCallExpression(ImportName, test.TestingTAttributeName)
 				} else {
-					newSubTestCall = getStartSubTestSentence(importName, test.TestingTAttributeName)
+					newSubTestCall = getStartSubTestSentence(ImportName, test.TestingTAttributeName)
 				}
 				newSubTestCall.Args = append(newSubTestCall.Args, subTest.Call.Args...)
 				subTest.Call.Fun = newSubTestCall.Fun
@@ -317,8 +317,8 @@ func processFile(file *astTestFileData) bool {
 		}
 
 		if isDirty {
-			if !astutil.UsesImport(file.AstFile, importPath) {
-				astutil.AddNamedImport(file.FileSet, file.AstFile, importName, importPath)
+			if !astutil.UsesImport(file.AstFile, ImportPath) {
+				astutil.AddNamedImport(file.FileSet, file.AstFile, ImportName, ImportPath)
 			}
 
 			if file.DestinationFilePath == "" {

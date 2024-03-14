@@ -7,6 +7,7 @@ import (
 	"go/printer"
 	"go/token"
 	"golang.org/x/tools/go/ast/astutil"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -229,6 +230,16 @@ func ProcessContainer() {
 			}
 
 			if testMainTestData == nil {
+
+				folder := path.Dir(container.Files[0].FilePath)
+				folderFile := path.Join(folder, "_testmain.go")
+				log.Println("Folder: ", folderFile)
+				if _, err := os.Stat(folderFile); err == nil {
+					log.Println("_testmain.go exist")
+				} else {
+					log.Println("_testmain.go don't exist")
+				}
+
 				if !strings.HasSuffix(container.Package, "_test") {
 					// This package doesn't have a TestMain func, let's check if this is a black box testing scenario before trying to create a TestMain func
 					packageWithTest := fmt.Sprintf("%v_test", container.Package)
@@ -323,6 +334,7 @@ func processFile(file *astTestFileData) bool {
 				fileNameExt := path.Ext(fileName)
 				fileName = fmt.Sprintf("%v_*_%v", strings.TrimRight(fileName, fileNameExt), fileNameExt)
 				if tmpFile, err := os.CreateTemp("", fileName); err == nil {
+					log.Printf("%s was modified.\n", file.FilePath)
 					file.DestinationFilePath = tmpFile.Name()
 					tmpFile.Close()
 				}

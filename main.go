@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io"
 	"log"
 	"os"
 	"path"
@@ -15,7 +14,7 @@ import (
 var root string
 
 func main() {
-	log.SetOutput(io.Discard)
+	//log.SetOutput(io.Discard)
 	cmdT := proxy.MustParseCommand(os.Args[1:])
 
 	if cmdT.Type() == proxy.CommandTypeOther {
@@ -60,6 +59,8 @@ func main() {
 			log.Printf("Adding swapper for %v replacements", len(replacementMap))
 			swapper := processors.NewGoFileSwapper(replacementMap)
 			proxy.ProcessCommand(compileCmd, swapper.ProcessCompile)
+
+			log.Println(compileCmd.Args())
 		}
 
 		proxy.ProcessCommand(compileCmd, pkgInj.ProcessCompile)

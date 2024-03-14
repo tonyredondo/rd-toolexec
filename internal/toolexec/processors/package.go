@@ -131,7 +131,7 @@ func parseImportConfig(cfg *os.File) PackageRegister {
 // yield and importcfg.link in their b001 compilation subtree
 func BuildPackage(importPath, pkgDir string, buildFlags ...string) (*PackageRegister, error) {
 	// 1 - Build pkg
-	log.Printf("====> Building %s\n", importPath)
+	log.Printf("====> Building %s [%s] %v\n", importPath, pkgDir, buildFlags)
 	wDir, err := utils.GoBuild(pkgDir, buildFlags...)
 	if err != nil {
 		return nil, err
@@ -140,7 +140,7 @@ func BuildPackage(importPath, pkgDir string, buildFlags ...string) (*PackageRegi
 	pkgReg := newPackageRegister(importPath, wDir)
 
 	// 2 - Fetch and combine all dependencies
-	log.Printf("====> Building pkg register for %s\n", importPath)
+	log.Printf("====> Building pkg register for %s [dir=%s]\n", importPath, wDir)
 	filepath.WalkDir(wDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -232,6 +232,7 @@ func (i *PackageInjector) ProcessLink(cmd *proxy.LinkCommand) {
 	utils.ExitIfError(err)
 
 	// 2 - Process importcfg.link
+	log.Printf("====> Reading importcfg.link: %s [%s]\n", cmd.Flags.ImportCfg, cmd.Flags.Output)
 	file, err := os.Open(cmd.Flags.ImportCfg)
 	utils.ExitIfError(err)
 

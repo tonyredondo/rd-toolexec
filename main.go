@@ -1,6 +1,8 @@
 package main
 
 import (
+	"io"
+	"log"
 	"os"
 	"path"
 	testAst "rd-toolexec/internal/ast"
@@ -13,6 +15,7 @@ import (
 var root string
 
 func main() {
+	log.SetOutput(io.Discard)
 	cmdT := proxy.MustParseCommand(os.Args[1:])
 
 	if cmdT.Type() == proxy.CommandTypeOther {
@@ -33,6 +36,7 @@ func main() {
 		compileCmd := cmdT.(*proxy.CompileCommand)
 		for _, file := range compileCmd.GoFiles() {
 			if strings.HasSuffix(file, "_test.go") {
+				log.Printf("Adding %s", file)
 				testAst.AppendTestFile(file)
 			}
 		}
@@ -43,12 +47,14 @@ func main() {
 		for _, container := range testContainers {
 			for _, file := range container.Files {
 				if file.DestinationFilePath != "" {
+					log.Printf("Adding replacement: %s", file.DestinationFilePath)
 					replacementMap[file.FilePath] = file.DestinationFilePath
 				}
 			}
 		}
 
 		if len(replacementMap) > 0 {
+			log.Printf("Adding swapper for %v replacements", len(replacementMap))
 			swapper := processors.NewGoFileSwapper(replacementMap)
 			proxy.ProcessCommand(compileCmd, swapper.ProcessCompile)
 		}

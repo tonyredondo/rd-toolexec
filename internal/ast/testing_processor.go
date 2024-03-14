@@ -118,8 +118,7 @@ func createTestData(file string) (*astTestFileData, error) {
 		}
 
 		ast.Inspect(astFile, func(n ast.Node) bool {
-			funcDecl, ok := n.(*ast.FuncDecl)
-			if ok {
+			if funcDecl, ok := n.(*ast.FuncDecl); ok {
 				if strings.HasPrefix(funcDecl.Name.String(), "Test") {
 
 					// Let's extract the parameter name for `testing.T`
@@ -210,6 +209,50 @@ func (v *innerTestRunVisitor) Visit(node ast.Node) (w ast.Visitor) {
 	return v
 }
 
+func ProcessTestMainGo(file string) {
+	fileSet := token.NewFileSet()
+	astFile, err := parser.ParseFile(fileSet, file, nil, parser.SkipObjectResolution)
+	if err == nil {
+		if !astutil.UsesImport(astFile, ImportPath) {
+			astutil.AddNamedImport(fileSet, astFile, ImportName, ImportPath)
+		}
+
+		ast.Inspect(astFile, func(n ast.Node) bool {
+			if funcDecl, ok := n.(*ast.FuncDecl); ok {
+				if strings.HasPrefix(funcDecl.Name.String(), "main") {
+					ast.Inspect(funcDecl.Body, func(bNode ast.Node) bool {
+						if callExpr, ok := bNode.(*ast.CallExpr); ok {
+							if fun, ok := callExpr.Fun.(*ast.SelectorExpr); ok {
+								if fun.Sel.Name == "Run" && fmt.Sprintf("%v", fun.X) == "m" {
+									newSubTestCall := getTestMainRunCallExpression(ImportName, fmt.Sprintf("%v", fun.X))
+									newSubTestCall.Args = append(newSubTestCall.Args, callExpr.Args...)
+									callExpr.Fun = newSubTestCall.Fun
+									callExpr.Args = newSubTestCall.Args
+									return false
+								}
+							}
+						}
+						return true
+					})
+					return false
+				}
+			}
+			return true
+		})
+
+		f, err := os.Create(file)
+		if err == nil {
+			defer f.Close()
+			err = printer.Fprint(f, fileSet, astFile)
+			if err != nil {
+				fmt.Println(err)
+			}
+		} else {
+			fmt.Println(err)
+		}
+	}
+}
+
 func ProcessContainer() {
 
 	filePath := path.Join(os.TempDir(), fmt.Sprintf(".test_main_packages_%s", buildId))
@@ -230,15 +273,6 @@ func ProcessContainer() {
 			}
 
 			if testMainTestData == nil {
-
-				folder := path.Dir(container.Files[0].FilePath)
-				folderFile := path.Join(folder, "_testmain.go")
-				log.Println("Folder: ", folderFile)
-				if _, err := os.Stat(folderFile); err == nil {
-					log.Println("_testmain.go exist")
-				} else {
-					log.Println("_testmain.go don't exist")
-				}
 
 				if !strings.HasSuffix(container.Package, "_test") {
 					// This package doesn't have a TestMain func, let's check if this is a black box testing scenario before trying to create a TestMain func

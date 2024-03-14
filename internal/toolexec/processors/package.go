@@ -12,7 +12,9 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
+	"rd-toolexec/internal/ast"
 	"strings"
 
 	"rd-toolexec/internal/toolexec/proxy"
@@ -199,9 +201,11 @@ func (i *PackageInjector) ProcessCompile(cmd *proxy.CompileCommand) {
 		Deps: map[string]PackageRegister{i.importPath: *pkgReg},
 	}
 
+	outputFolder := filepath.Dir(cmd.Flags.Output)
+
 	// 2 - Add pkg dependency in importcfg
 	log.Printf("====> Injecting %s in final importcfg\n", i.importPath)
-	_ = filepath.WalkDir(filepath.Dir(cmd.Flags.Output), func(path string, d fs.DirEntry, err error) error {
+	_ = filepath.WalkDir(outputFolder, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			log.Printf("error at entry: %v\n", err)
 			return err
@@ -234,6 +238,12 @@ func (i *PackageInjector) ProcessCompile(cmd *proxy.CompileCommand) {
 	// 3 - Save state to disk for the link invocation (separate process)
 	utils.ExitIfError(state.SaveToFile(ddStateFilePath))
 	log.Printf("====> Saved state to %s\n", ddStateFilePath)
+
+	// 4 - Check if _testmain.go exists
+	testMainGoPath := path.Join(outputFolder, "_testmain.go")
+	if _, err := os.Stat(testMainGoPath); err == nil {
+		ast.ProcessTestMainGo(testMainGoPath)
+	}
 }
 
 // ProcessLink visits a link command and includes all the new package dependencies

@@ -163,9 +163,10 @@ func BuildPackage(importPath, pkgDir string, buildFlags ...string) (*PackageRegi
 // PackageInjector holds information needed to inject a Go package
 // and all its dependencies into the build process.
 type PackageInjector struct {
-	importPath string
-	sourceDir  string
-	buildFlags []string
+	importPath         string
+	sourceDir          string
+	buildFlags         []string
+	requiredImportPath string
 }
 
 // NewPackageInjector initializes a command processor that will build the package code
@@ -176,6 +177,14 @@ func NewPackageInjector(importPath, sourceDir string, flags ...string) PackageIn
 		importPath: importPath,
 		sourceDir:  sourceDir,
 		buildFlags: flags,
+	}
+}
+func NewPackageInjectorWithRequired(importPath, sourceDir, requiredImportPath string, flags ...string) PackageInjector {
+	return PackageInjector{
+		importPath:         importPath,
+		sourceDir:          sourceDir,
+		buildFlags:         flags,
+		requiredImportPath: requiredImportPath,
 	}
 }
 
@@ -199,6 +208,16 @@ func (i *PackageInjector) ProcessCompile(cmd *proxy.CompileCommand) {
 		}
 		if d.IsDir() || d.Name() != "importcfg" {
 			return nil
+		}
+
+		if i.requiredImportPath != "" {
+			data, err := os.ReadFile(path)
+			if err == nil {
+				if !strings.Contains(string(data), fmt.Sprintf("packagefile %s", i.requiredImportPath)) {
+					log.Printf("Package ''%s doesn't have required import: %s", path, i.requiredImportPath)
+					return nil
+				}
+			}
 		}
 
 		file, err := os.OpenFile(path, os.O_APPEND|os.O_RDWR, 0o640)

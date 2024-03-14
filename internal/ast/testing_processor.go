@@ -211,8 +211,8 @@ func (v *innerTestRunVisitor) Visit(node ast.Node) (w ast.Visitor) {
 
 func ProcessContainer() {
 
-	//filePath := path.Join(os.TempDir(), fmt.Sprintf(".test_main_packages_%s", buildId))
-	filePath := path.Join(basePath, ".test_main_packages")
+	filePath := path.Join(os.TempDir(), fmt.Sprintf(".test_main_packages_%s", buildId))
+	// filePath := path.Join(basePath, ".test_main_packages")
 	if bytes, err := os.ReadFile(filePath); err == nil {
 		fileContent = strings.Split(string(bytes), "\n")
 	}

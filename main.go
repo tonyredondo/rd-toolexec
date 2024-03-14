@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"log"
 	"os"
 	"path"
@@ -14,7 +15,7 @@ import (
 var root string
 
 func main() {
-	// log.SetOutput(io.Discard)
+	log.SetOutput(io.Discard)
 	cmdT := proxy.MustParseCommand(os.Args[1:])
 
 	if cmdT.Type() == proxy.CommandTypeOther {
@@ -22,7 +23,10 @@ func main() {
 		return
 	}
 
-	pkgInj := processors.NewPackageInjector(testAst.ImportPath, path.Join(root, "external", "dd-sdk-go-testing", "autoinstrument"))
+	pkgInj := processors.NewPackageInjectorWithRequired(
+		testAst.ImportPath,
+		path.Join(root, "external", "dd-sdk-go-testing", "autoinstrument"),
+		"testing")
 
 	if cmdT.Type() == proxy.CommandTypeCompile {
 		for idx, val := range cmdT.Args() {

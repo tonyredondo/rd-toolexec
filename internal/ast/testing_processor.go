@@ -213,10 +213,6 @@ func ProcessTestMainGo(file string) {
 	fileSet := token.NewFileSet()
 	astFile, err := parser.ParseFile(fileSet, file, nil, parser.SkipObjectResolution)
 	if err == nil {
-		if !astutil.UsesImport(astFile, ImportPath) {
-			astutil.AddNamedImport(fileSet, astFile, ImportName, ImportPath)
-		}
-
 		ast.Inspect(astFile, func(n ast.Node) bool {
 			if funcDecl, ok := n.(*ast.FuncDecl); ok {
 				if strings.HasPrefix(funcDecl.Name.String(), "main") {
@@ -228,6 +224,9 @@ func ProcessTestMainGo(file string) {
 									newSubTestCall.Args = append(newSubTestCall.Args, callExpr.Args...)
 									callExpr.Fun = newSubTestCall.Fun
 									callExpr.Args = newSubTestCall.Args
+									if !astutil.UsesImport(astFile, ImportPath) {
+										astutil.AddNamedImport(fileSet, astFile, ImportName, ImportPath)
+									}
 									return false
 								}
 							}

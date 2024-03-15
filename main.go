@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"log"
 	"os"
 	"path"
@@ -14,7 +15,7 @@ import (
 var root string
 
 func main() {
-	//log.SetOutput(io.Discard)
+	log.SetOutput(io.Discard)
 	cmdT := proxy.MustParseCommand(os.Args[1:])
 
 	if cmdT.Type() == proxy.CommandTypeOther {

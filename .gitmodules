@@ -1,4 +1,0 @@
-[submodule "external/dd-sdk-go-testing"]
-	path = external/dd-sdk-go-testing
-	url = https://github.com/DataDog/dd-sdk-go-testing.git
-	branch = tony/rd-autoinstrument

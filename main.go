@@ -1,13 +1,13 @@
 package main
 
 import (
+	testAst "github.com/tonyredondo/rd-toolexec/internal/ast"
+	"github.com/tonyredondo/rd-toolexec/internal/toolexec/processors"
+	"github.com/tonyredondo/rd-toolexec/internal/toolexec/proxy"
 	"io"
 	"log"
 	"os"
 	"path"
-	testAst "rd-toolexec/internal/ast"
-	"rd-toolexec/internal/toolexec/processors"
-	"rd-toolexec/internal/toolexec/proxy"
 	"runtime"
 	"strings"
 )

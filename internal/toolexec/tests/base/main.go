@@ -5,7 +5,7 @@
 
 package main
 
-import "rd-toolexec/internal/toolexec/tests/base/lib"
+import "github.com/tonyredondo/rd-toolexec/internal/toolexec/tests/base/lib"
 
 func main() {
 	lib.Print()

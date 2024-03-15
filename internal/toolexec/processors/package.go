@@ -8,17 +8,17 @@ package processors
 import (
 	"bufio"
 	"fmt"
+	"github.com/tonyredondo/rd-toolexec/internal/ast"
 	"io"
 	"io/fs"
 	"log"
 	"os"
 	"path"
 	"path/filepath"
-	"rd-toolexec/internal/ast"
 	"strings"
 
-	"rd-toolexec/internal/toolexec/proxy"
-	"rd-toolexec/internal/toolexec/utils"
+	"github.com/tonyredondo/rd-toolexec/internal/toolexec/proxy"
+	"github.com/tonyredondo/rd-toolexec/internal/toolexec/utils"
 )
 
 // PackageRegister describes Go package and its dependencies

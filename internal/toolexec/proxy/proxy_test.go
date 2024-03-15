@@ -9,7 +9,7 @@ import (
 	"reflect"
 	"testing"
 
-	"rd-toolexec/internal/toolexec/proxy"
+	"github.com/tonyredondo/rd-toolexec/internal/toolexec/proxy"
 
 	"github.com/stretchr/testify/require"
 )

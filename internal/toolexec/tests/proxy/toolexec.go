@@ -16,8 +16,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"rd-toolexec/internal/toolexec/processors"
-	"rd-toolexec/internal/toolexec/proxy"
+	"github.com/tonyredondo/rd-toolexec/internal/toolexec/processors"
+	"github.com/tonyredondo/rd-toolexec/internal/toolexec/proxy"
 )
 
 type Config struct {

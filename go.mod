@@ -1,4 +1,4 @@
-module rd-toolexec
+module github.com/tonyredondo/rd-toolexec
 
 go 1.22
 

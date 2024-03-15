@@ -8,8 +8,8 @@ package examples
 import (
 	"log"
 
-	"rd-toolexec/internal/toolexec/proxy"
-	"rd-toolexec/internal/toolexec/utils"
+	"github.com/tonyredondo/rd-toolexec/internal/toolexec/proxy"
+	"github.com/tonyredondo/rd-toolexec/internal/toolexec/utils"
 )
 
 func ExampleListGofiles() {

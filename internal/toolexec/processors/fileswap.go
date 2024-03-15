@@ -8,7 +8,7 @@ package processors
 import (
 	"log"
 
-	"rd-toolexec/internal/toolexec/proxy"
+	"github.com/tonyredondo/rd-toolexec/internal/toolexec/proxy"
 )
 
 type GoFileSwapper struct {

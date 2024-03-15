@@ -1,12 +1,15 @@
 package main
 
 import (
+	"fmt"
+	"github.com/alexflint/go-filemutex"
 	testAst "github.com/tonyredondo/rd-toolexec/internal/ast"
 	"github.com/tonyredondo/rd-toolexec/internal/toolexec/processors"
 	"github.com/tonyredondo/rd-toolexec/internal/toolexec/proxy"
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"path"
 	"runtime"
 	"strings"
@@ -15,6 +18,11 @@ import (
 var root string
 
 func main() {
+	if len(os.Args) == 1 {
+		GetSDKFolder()
+		return
+	}
+
 	log.SetOutput(io.Discard)
 	cmdT := proxy.MustParseCommand(os.Args[1:])
 
@@ -23,10 +31,7 @@ func main() {
 		return
 	}
 
-	pkgInj := processors.NewPackageInjectorWithRequired(
-		testAst.ImportPath,
-		path.Join(root, "external", "dd-sdk-go-testing", "autoinstrument"),
-		"testing")
+	pkgInj := processors.NewPackageInjectorWithRequired(testAst.ImportPath, GetSDKFolder(), "testing")
 
 	if cmdT.Type() == proxy.CommandTypeCompile {
 		for idx, val := range cmdT.Args() {
@@ -60,7 +65,6 @@ func main() {
 			log.Printf("Adding swapper for %v replacements", len(replacementMap))
 			swapper := processors.NewGoFileSwapper(replacementMap)
 			proxy.ProcessCommand(compileCmd, swapper.ProcessCompile)
-
 			log.Println(compileCmd.Args())
 		}
 
@@ -74,65 +78,53 @@ func main() {
 		proxy.MustRunCommand(cmdT)
 		return
 	}
+}
 
-	/*
-		tool, args := os.Args[1], os.Args[2:]
-		toolName := filepath.Base(tool)
-		if len(args) > 0 && args[0] == "-V=full" {
-			// We can't alter the version output.
-		} else {
-			// proxy.ProcessCommand(cmdT, )
+func GetSDKFolder() string {
+	finalSdk := ""
+	noArgument := len(os.Args) == 1
+	if noArgument || os.Args[2] != "-V=full" {
+		m, lockError := filemutex.New("/tmp/dd-sdk-go-testing.lock")
+		if lockError == nil {
+			m.Lock()
+		}
 
-			proxy.RunCommand(cmdT)
-			_ = cmdT
+		sdkPaths := []string{
+			path.Join(root, "external", "dd-sdk-go-testing"),
+			path.Join(os.TempDir(), "dd-sdk-go-testing"),
+		}
 
-			if toolName == "compile" {
-				var re = regexp.MustCompile(`(?m)^.*_test\.go$`)
-				for _, v := range args {
-					if re.MatchString(v) {
-						nv, err := filepath.Abs(v)
-						if err == nil {
-							testAst.AppendTestFile(nv)
-						} else {
-							testAst.AppendTestFile(v)
-						}
-					}
+		for _, sdkPath := range sdkPaths {
+			autoInstrumentPath := path.Join(sdkPath, "autoinstrument")
+			if _, err := os.Stat(autoInstrumentPath); err == nil {
+				// SDK found
+				finalSdk = autoInstrumentPath
+				if noArgument {
+					fmt.Printf("SDK found at: %s\n", finalSdk)
 				}
-
-					containers := testAst.GetTestContainer()
-					for _, container := range containers {
-						fmt.Printf("Package: %v\n", container.Package)
-						for _, file := range container.Files {
-							fmt.Printf("\tFile: %v | ContainsDDTestingImport: %v | HasTestMain: %v\n", file.FilePath, file.ContainsDDTestingImport, file.TestMain != nil)
-							for _, test := range file.Tests {
-								fmt.Printf("\t\t%v (%v-%v) %v\n", test.TestName, test.StartLine, test.EndLine, test.TestingTAttributeName)
-								for _, subTest := range test.SubTests {
-									fmt.Printf("\t\t\t%v (%v) | %v\n", subTest.TestName, subTest.Line, subTest.Call)
-								}
-							}
-						}
-					}
-
-				for idx, val := range args {
-					if val == "-buildid" {
-						testAst.SetBuildId(args[idx+1])
-						break
-					}
-				}
-				testAst.ProcessContainer()
+				break
 			}
 		}
+		if finalSdk == "" {
+			tmpPath := sdkPaths[1]
+			if noArgument {
+				fmt.Printf("Downloading SDK to: %s\n", tmpPath)
+			}
+			cmdGitClone := exec.Command("git", "clone", "https://github.com/DataDog/dd-sdk-go-testing.git")
+			cmdGitClone.Dir = os.TempDir()
+			cmdGitClone.CombinedOutput()
 
-		// Simply run the tool.
-		cmd := exec.Command(tool, args...)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			cmdGitCheckout := exec.Command("git", "checkout", "tony/rd-autoinstrument")
+			cmdGitCheckout.Dir = tmpPath
+			cmdGitCheckout.CombinedOutput()
+			finalSdk = path.Clean(path.Join(tmpPath, "autoinstrument"))
 		}
 
-	*/
+		if lockError == nil {
+			m.Unlock()
+		}
+	}
+	return finalSdk
 }
 
 func init() {

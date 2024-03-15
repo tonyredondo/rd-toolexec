@@ -204,7 +204,7 @@ func (i *PackageInjector) ProcessCompile(cmd *proxy.CompileCommand) {
 	outputFolder := filepath.Dir(cmd.Flags.Output)
 
 	// 2 - Add pkg dependency in importcfg
-	log.Printf("====> Injecting %s in final importcfg\n", i.importPath)
+	log.Printf("====> Injecting %s in final importcfg [%s]\n", i.importPath, outputFolder)
 	_ = filepath.WalkDir(outputFolder, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			log.Printf("error at entry: %v\n", err)

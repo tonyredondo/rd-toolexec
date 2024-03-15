@@ -83,46 +83,44 @@ func main() {
 func GetSDKFolder() string {
 	finalSdk := ""
 	noArgument := len(os.Args) == 1
-	if noArgument || os.Args[2] != "-V=full" {
-		m, lockError := filemutex.New("/tmp/dd-sdk-go-testing.lock")
-		if lockError == nil {
-			m.Lock()
-		}
+	m, lockError := filemutex.New("/tmp/dd-sdk-go-testing.lock")
+	if lockError == nil {
+		m.Lock()
+	}
 
-		sdkPaths := []string{
-			path.Join(root, "external", "dd-sdk-go-testing"),
-			path.Join(os.TempDir(), "dd-sdk-go-testing"),
-		}
+	sdkPaths := []string{
+		path.Join(root, "external", "dd-sdk-go-testing"),
+		path.Join(os.TempDir(), "dd-sdk-go-testing"),
+	}
 
-		for _, sdkPath := range sdkPaths {
-			autoInstrumentPath := path.Join(sdkPath, "autoinstrument")
-			if _, err := os.Stat(autoInstrumentPath); err == nil {
-				// SDK found
-				finalSdk = autoInstrumentPath
-				if noArgument {
-					fmt.Printf("SDK found at: %s\n", finalSdk)
-				}
-				break
-			}
-		}
-		if finalSdk == "" {
-			tmpPath := sdkPaths[1]
+	for _, sdkPath := range sdkPaths {
+		autoInstrumentPath := path.Join(sdkPath, "autoinstrument")
+		if _, err := os.Stat(autoInstrumentPath); err == nil {
+			// SDK found
+			finalSdk = autoInstrumentPath
 			if noArgument {
-				fmt.Printf("Downloading SDK to: %s\n", tmpPath)
+				fmt.Printf("SDK found at: %s\n", finalSdk)
 			}
-			cmdGitClone := exec.Command("git", "clone", "https://github.com/DataDog/dd-sdk-go-testing.git")
-			cmdGitClone.Dir = os.TempDir()
-			cmdGitClone.CombinedOutput()
-
-			cmdGitCheckout := exec.Command("git", "checkout", "tony/rd-autoinstrument")
-			cmdGitCheckout.Dir = tmpPath
-			cmdGitCheckout.CombinedOutput()
-			finalSdk = path.Clean(path.Join(tmpPath, "autoinstrument"))
+			break
 		}
-
-		if lockError == nil {
-			m.Unlock()
+	}
+	if finalSdk == "" {
+		tmpPath := sdkPaths[1]
+		if noArgument {
+			fmt.Printf("Downloading SDK to: %s\n", tmpPath)
 		}
+		cmdGitClone := exec.Command("git", "clone", "https://github.com/DataDog/dd-sdk-go-testing.git")
+		cmdGitClone.Dir = os.TempDir()
+		cmdGitClone.CombinedOutput()
+
+		cmdGitCheckout := exec.Command("git", "checkout", "tony/rd-autoinstrument")
+		cmdGitCheckout.Dir = tmpPath
+		cmdGitCheckout.CombinedOutput()
+		finalSdk = path.Clean(path.Join(tmpPath, "autoinstrument"))
+	}
+
+	if lockError == nil {
+		m.Unlock()
 	}
 	return finalSdk
 }

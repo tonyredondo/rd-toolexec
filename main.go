@@ -25,7 +25,7 @@ func main() {
 
 	pkgInj := processors.NewPackageInjectorWithRequired(
 		testAst.ImportPath,
-		path.Join(root, "external", "dd-sdk-go-testing", "autoinstrument"),
+		path.Join(root, "sdk", "dd-sdk-go-testing", "autoinstrument"),
 		"testing")
 
 	if cmdT.Type() == proxy.CommandTypeCompile {

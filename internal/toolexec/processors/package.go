@@ -8,12 +8,10 @@ package processors
 import (
 	"bufio"
 	"fmt"
-	"github.com/tonyredondo/rd-toolexec/internal/ast"
 	"io"
 	"io/fs"
 	"log"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 
@@ -238,12 +236,6 @@ func (i *PackageInjector) ProcessCompile(cmd *proxy.CompileCommand) {
 	// 3 - Save state to disk for the link invocation (separate process)
 	utils.ExitIfError(state.SaveToFile(ddStateFilePath))
 	log.Printf("====> Saved state to %s\n", ddStateFilePath)
-
-	// 4 - Check if _testmain.go exists
-	testMainGoPath := path.Join(outputFolder, "_testmain.go")
-	if _, err := os.Stat(testMainGoPath); err == nil {
-		ast.ProcessTestMainGo(testMainGoPath)
-	}
 }
 
 // ProcessLink visits a link command and includes all the new package dependencies

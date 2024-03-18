@@ -3,8 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/alexflint/go-filemutex"
-	testAst "github.com/tonyredondo/rd-toolexec/internal/ast"
-	"github.com/tonyredondo/rd-toolexec/internal/toolexec/processors"
+	"github.com/tonyredondo/rd-toolexec/internal/toolexec/processors/gotest"
 	"github.com/tonyredondo/rd-toolexec/internal/toolexec/proxy"
 	"io"
 	"log"
@@ -12,7 +11,6 @@ import (
 	"os/exec"
 	"path"
 	"runtime"
-	"strings"
 )
 
 var root string
@@ -28,55 +26,17 @@ func main() {
 
 	if cmdT.Type() == proxy.CommandTypeOther {
 		proxy.MustRunCommand(cmdT)
-		return
-	}
-
-	pkgInj := processors.NewPackageInjectorWithRequired(testAst.ImportPath, GetSDKFolder(), "testing")
-
-	if cmdT.Type() == proxy.CommandTypeCompile {
-		for idx, val := range cmdT.Args() {
-			if val == "-buildid" {
-				testAst.SetBuildId(cmdT.Args()[idx+1])
-				break
-			}
+	} else {
+		goTestProcessor := gotest.NewGoTestProcessor(GetSDKFolder())
+		if cmdT.Type() == proxy.CommandTypeCompile {
+			compileCmd := cmdT.(*proxy.CompileCommand)
+			proxy.ProcessCommand(compileCmd, goTestProcessor.ProcessCompile)
+		} else if cmdT.Type() == proxy.CommandTypeLink {
+			linkCmd := cmdT.(*proxy.LinkCommand)
+			proxy.ProcessCommand(linkCmd, goTestProcessor.ProcessLink)
 		}
 
-		compileCmd := cmdT.(*proxy.CompileCommand)
-		for _, file := range compileCmd.GoFiles() {
-			if strings.HasSuffix(file, "_test.go") {
-				log.Printf("Adding %s", file)
-				testAst.AppendTestFile(file)
-			}
-		}
-
-		testAst.ProcessContainer()
-		testContainers := testAst.GetTestContainer()
-		replacementMap := map[string]string{}
-		for _, container := range testContainers {
-			for _, file := range container.Files {
-				if file.DestinationFilePath != "" {
-					log.Printf("Adding replacement: %s", file.DestinationFilePath)
-					replacementMap[file.FilePath] = file.DestinationFilePath
-				}
-			}
-		}
-
-		if len(replacementMap) > 0 {
-			log.Printf("Adding swapper for %v replacements", len(replacementMap))
-			swapper := processors.NewGoFileSwapper(replacementMap)
-			proxy.ProcessCommand(compileCmd, swapper.ProcessCompile)
-			log.Println(compileCmd.Args())
-		}
-
-		proxy.ProcessCommand(compileCmd, pkgInj.ProcessCompile)
-		proxy.MustRunCommand(compileCmd)
-		return
-	}
-
-	if cmdT.Type() == proxy.CommandTypeLink {
-		proxy.ProcessCommand(cmdT, pkgInj.ProcessLink)
 		proxy.MustRunCommand(cmdT)
-		return
 	}
 }
 

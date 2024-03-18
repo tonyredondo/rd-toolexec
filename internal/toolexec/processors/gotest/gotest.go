@@ -1,7 +1,9 @@
-package ast
+package gotest
 
 import (
 	"fmt"
+	"github.com/tonyredondo/rd-toolexec/internal/toolexec/processors"
+	"github.com/tonyredondo/rd-toolexec/internal/toolexec/proxy"
 	"go/ast"
 	"go/parser"
 	"go/printer"
@@ -15,22 +17,33 @@ import (
 	"strings"
 )
 
-// go get github.com/DataDog/dd-sdk-go-testing@a3bdb65a82031481e2edfcbf819261560f3393f2
 const (
 	ImportName    string = "ddtesting"
 	ImportPath    string = "github.com/DataDog/dd-sdk-go-testing/autoinstrument"
 	importPathAst        = `"` + ImportPath + `"`
 )
 
-type astTestContainer struct {
-	Package string
-	Files   []*astTestFileData
+type GoTestProcessor struct {
+	testingSdkSourcePath string
+	packageInjector      processors.PackageInjector
 }
 
-var containers []*astTestContainer
-var buildId string
-var basePath string
-var fileContent []string
+type astSubTestData struct {
+	TestName              string
+	TestingTAttributeName string
+	Call                  *ast.CallExpr
+}
+
+type astTestData struct {
+	TestName                 string
+	TestingTAttributeName    string
+	AstDeclaration           *ast.FuncDecl
+	SubTests                 []*astSubTestData
+	Parent                   *astTestFileData
+	IsMain                   bool
+	IsTestMainGoFile         bool
+	MRunCallInTestMainGoFile *ast.CallExpr
+}
 
 type astTestFileData struct {
 	Tests                   []*astTestData
@@ -41,59 +54,96 @@ type astTestFileData struct {
 	ContainsDDTestingImport bool
 	Parent                  *astTestContainer
 	TestMain                *astTestData
+	IsTestMainGoFile        bool
 	DestinationFilePath     string
 }
 
-type astTestData struct {
-	TestName              string
-	TestingTAttributeName string
-	StartLine             int
-	EndLine               int
-	AstDeclaration        *ast.FuncDecl
-	SubTests              []*astSubTestData
-	Parent                *astTestFileData
-	IsMain                bool
+type astTestContainer struct {
+	Package string
+	Files   []*astTestFileData
 }
 
-type astSubTestData struct {
-	TestName              string
-	TestingTAttributeName string
-	Line                  int
-	Call                  *ast.CallExpr
-	SubTests              []*astSubTestData
+var (
+	containers  []*astTestContainer
+	buildId     string
+	fileContent []string
+)
+
+func NewGoTestProcessor(sdkSourcePath string) GoTestProcessor {
+	return GoTestProcessor{
+		testingSdkSourcePath: sdkSourcePath,
+		packageInjector:      processors.NewPackageInjectorWithRequired(ImportPath, sdkSourcePath, "testing"),
+	}
 }
 
-func GetTestContainer() []*astTestContainer {
-	return containers
-}
+func (p *GoTestProcessor) ProcessCompile(cmd *proxy.CompileCommand) {
+	// Extract BuildId
+	cmdArgs := cmd.Args()
+	for idx, val := range cmdArgs {
+		if val == "-buildid" {
+			buildId = cmdArgs[idx+1]
+			log.Printf("BuildId: %s\n", buildId)
+			break
+		}
+	}
 
-func ResetTestContainer() {
-	containers = make([]*astTestContainer, 0)
-}
-
-func SetBuildId(id string) {
-	buildId = id
-}
-
-func AppendTestFile(file string) {
-	basePath = filepath.Dir(file)
-	testData, err := createTestData(file)
-	if err == nil {
-		var selectedContainer *astTestContainer
-		for _, container := range containers {
-			if container.Package == testData.Package {
-				selectedContainer = container
-				break
+	// Process files from compile command
+	for _, file := range cmd.GoFiles() {
+		if strings.HasSuffix(file, "_test.go") ||
+			strings.Contains(file, "_testmain.go") {
+			// Let's process all _test.go files or the test binary main file
+			log.Printf("Adding %s\n", file)
+			testData, err := createTestData(file)
+			if err == nil {
+				var selectedContainer *astTestContainer
+				for _, container := range containers {
+					if container.Package == testData.Package {
+						selectedContainer = container
+						break
+					}
+				}
+				if selectedContainer == nil {
+					selectedContainer = new(astTestContainer)
+					selectedContainer.Package = testData.Package
+					containers = append(containers, selectedContainer)
+				}
+				testData.Parent = selectedContainer
+				selectedContainer.Files = append(selectedContainer.Files, testData)
 			}
 		}
-		if selectedContainer == nil {
-			selectedContainer = new(astTestContainer)
-			selectedContainer.Package = testData.Package
-			containers = append(containers, selectedContainer)
-		}
-		testData.Parent = selectedContainer
-		selectedContainer.Files = append(selectedContainer.Files, testData)
 	}
+
+	if len(containers) > 0 {
+		// We have data to process.
+		processContainer()
+	}
+
+	// Create replacement map from processed files
+	replacementMap := map[string]string{}
+	for _, container := range containers {
+		for _, file := range container.Files {
+			if file.DestinationFilePath != "" {
+				log.Printf("Adding replacement: %s\n", file.DestinationFilePath)
+				replacementMap[file.FilePath] = file.DestinationFilePath
+			}
+		}
+	}
+
+	// Add replacement processor
+	if len(replacementMap) > 0 {
+		log.Printf("Adding swapper for %v replacements", len(replacementMap))
+		swapper := processors.NewGoFileSwapper(replacementMap)
+		proxy.ProcessCommand(cmd, swapper.ProcessCompile)
+		log.Println(cmd.Args())
+	}
+
+	// Add library injection processor
+	proxy.ProcessCommand(cmd, p.packageInjector.ProcessCompile)
+}
+
+func (p *GoTestProcessor) ProcessLink(cmd *proxy.LinkCommand) {
+	// Add library injection processor
+	proxy.ProcessCommand(cmd, p.packageInjector.ProcessLink)
 }
 
 func createTestData(file string) (*astTestFileData, error) {
@@ -150,8 +200,6 @@ func createTestData(file string) (*astTestFileData, error) {
 					testData := new(astTestData)
 					testData.TestName = funcDecl.Name.Name
 					testData.TestingTAttributeName = tParam
-					testData.StartLine = fileSet.Position(funcDecl.Pos()).Line
-					testData.EndLine = fileSet.Position(funcDecl.End()).Line
 					testData.AstDeclaration = funcDecl
 					testData.Parent = testFileData
 					testData.IsMain = isMain
@@ -160,73 +208,39 @@ func createTestData(file string) (*astTestFileData, error) {
 						testFileData.TestMain = testData
 					}
 
-					innerData, err := createBodyTestData(testData, funcDecl.Body)
-					if err == nil {
-						testData.SubTests = innerData
-					}
+					ast.Inspect(funcDecl.Body, func(node ast.Node) bool {
+						switch t := node.(type) {
+						case *ast.CallExpr:
+							if fun, ok := t.Fun.(*ast.SelectorExpr); ok {
+								if fun.Sel.Name == "Run" {
+									if testData.TestingTAttributeName == fmt.Sprintf("%v", fun.X) {
+										innerTest := new(astSubTestData)
+										innerTest.TestName = fmt.Sprintf("%v.%v", fun.X, fun.Sel.String())
+										innerTest.TestingTAttributeName = ""
+										innerTest.Call = t
+										testData.SubTests = append(testData.SubTests, innerTest)
+									}
+								}
+							}
+						}
+						return true
+					})
 
 					testDataArray = append(testDataArray, testData)
-				}
-			}
-			return true
-		})
-	}
-
-	testFileData.Tests = testDataArray
-	return testFileData, nil
-}
-
-func createBodyTestData(test *astTestData, body *ast.BlockStmt) ([]*astSubTestData, error) {
-	visitor := new(innerTestRunVisitor)
-	visitor.test = test
-	ast.Walk(visitor, body)
-	return visitor.subTests, visitor.err
-}
-
-type innerTestRunVisitor struct {
-	test     *astTestData
-	subTests []*astSubTestData
-	err      error
-}
-
-func (v *innerTestRunVisitor) Visit(node ast.Node) (w ast.Visitor) {
-	switch t := node.(type) {
-	case *ast.CallExpr:
-		if fun, ok := t.Fun.(*ast.SelectorExpr); ok {
-			if fun.Sel.Name == "Run" {
-				if v.test.TestingTAttributeName == fmt.Sprintf("%v", fun.X) {
-					innerTest := new(astSubTestData)
-					innerTest.TestName = fmt.Sprintf("%v.%v", fun.X, fun.Sel.String())
-					innerTest.TestingTAttributeName = ""
-					innerTest.Line = v.test.Parent.FileSet.Position(fun.Pos()).Line
-					innerTest.Call = t
-					v.subTests = append(v.subTests, innerTest)
-				}
-			}
-		}
-	}
-
-	return v
-}
-
-func ProcessTestMainGo(file string) {
-	fileSet := token.NewFileSet()
-	astFile, err := parser.ParseFile(fileSet, file, nil, parser.SkipObjectResolution)
-	if err == nil {
-		ast.Inspect(astFile, func(n ast.Node) bool {
-			if funcDecl, ok := n.(*ast.FuncDecl); ok {
-				if strings.HasPrefix(funcDecl.Name.String(), "main") {
+				} else if strings.HasPrefix(funcDecl.Name.String(), "main") {
 					ast.Inspect(funcDecl.Body, func(bNode ast.Node) bool {
 						if callExpr, ok := bNode.(*ast.CallExpr); ok {
 							if fun, ok := callExpr.Fun.(*ast.SelectorExpr); ok {
 								if fun.Sel.Name == "Run" && fmt.Sprintf("%v", fun.X) == "m" {
-									newSubTestCall := getTestMainRunCallExpression(ImportName, fmt.Sprintf("%v", fun.X))
-									newSubTestCall.Args = append(newSubTestCall.Args, callExpr.Args...)
-									callExpr.Fun = newSubTestCall.Fun
-									callExpr.Args = newSubTestCall.Args
-									if !astutil.UsesImport(astFile, ImportPath) {
-										astutil.AddNamedImport(fileSet, astFile, ImportName, ImportPath)
-									}
+									testData := new(astTestData)
+									testData.TestName = "_testmain.go"
+									testData.TestingTAttributeName = "m"
+									testData.AstDeclaration = funcDecl
+									testData.Parent = testFileData
+									testData.IsTestMainGoFile = true
+									testData.MRunCallInTestMainGoFile = callExpr
+									testFileData.IsTestMainGoFile = true
+									testDataArray = append(testDataArray, testData)
 									return false
 								}
 							}
@@ -238,24 +252,15 @@ func ProcessTestMainGo(file string) {
 			}
 			return true
 		})
-
-		f, err := os.Create(file)
-		if err == nil {
-			defer f.Close()
-			err = printer.Fprint(f, fileSet, astFile)
-			if err != nil {
-				fmt.Println(err)
-			}
-		} else {
-			fmt.Println(err)
-		}
 	}
+
+	testFileData.Tests = testDataArray
+	return testFileData, nil
 }
 
-func ProcessContainer() {
+func processContainer() {
 
 	filePath := path.Join(os.TempDir(), fmt.Sprintf(".test_main_packages_%s", buildId))
-	// filePath := path.Join(basePath, ".test_main_packages")
 	if bytes, err := os.ReadFile(filePath); err == nil {
 		fileContent = strings.Split(string(bytes), "\n")
 	}
@@ -263,15 +268,17 @@ func ProcessContainer() {
 	for _, container := range containers {
 		if len(container.Files) > 0 {
 			isDirty := false
+			hasTestMainGoFile := false
 			var testMainTestData *astTestData
 			for _, file := range container.Files {
 				isDirty = processFile(file) || isDirty
+				hasTestMainGoFile = file.IsTestMainGoFile || hasTestMainGoFile
 				if file.TestMain != nil {
 					testMainTestData = file.TestMain
 				}
 			}
 
-			if testMainTestData == nil {
+			if testMainTestData == nil && !hasTestMainGoFile {
 
 				if !strings.HasSuffix(container.Package, "_test") {
 					// This package doesn't have a TestMain func, let's check if this is a black box testing scenario before trying to create a TestMain func
@@ -303,12 +310,6 @@ func ProcessContainer() {
 						astutil.AddNamedImport(packageFile.FileSet, packageFile.AstFile, ImportName, ImportPath)
 					}
 					packageFile.AstFile.Decls = append(packageFile.AstFile.Decls, getTestMainDeclarationSentence(ImportName, "m"))
-
-					/*
-						if packageFile.DestinationFilePath == "" {
-							packageFile.DestinationFilePath = path.Join(os.TempDir(), fmt.Sprintf("%s_%s", buildId, filepath.Base(packageFile.FilePath)))
-						}
-					*/
 
 					if packageFile.DestinationFilePath == "" {
 						fileName := filepath.Base(packageFile.FilePath)
@@ -343,6 +344,13 @@ func processFile(file *astTestFileData) bool {
 	if !file.ContainsDDTestingImport && len(file.Tests) > 0 {
 		isDirty := false
 		for _, test := range file.Tests {
+			if test.IsTestMainGoFile && test.MRunCallInTestMainGoFile != nil {
+				newSubTestCall := getTestMainRunCallExpression(ImportName, "m")
+				newSubTestCall.Args = append(newSubTestCall.Args, test.MRunCallInTestMainGoFile.Args...)
+				test.MRunCallInTestMainGoFile.Fun = newSubTestCall.Fun
+				test.MRunCallInTestMainGoFile.Args = newSubTestCall.Args
+				isDirty = true
+			}
 			for _, subTest := range test.SubTests {
 				var newSubTestCall *ast.CallExpr
 				if test.IsMain {
